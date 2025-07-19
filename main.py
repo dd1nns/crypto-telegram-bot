@@ -1,30 +1,21 @@
 import os
-import time
-import requests
-from telegram import Bot
-from dotenv import load_dotenv
-
-load_dotenv()
+from telegram import Update
+from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
 
-bot = Bot(token=BOT_TOKEN)
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("Halo! Bot Telegram aktif 🚀")
 
-def get_btc_price():
-    try:
-        response = requests.get("https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd")
-        data = response.json()
-        return data["bitcoin"]["usd"]
-    except Exception as e:
-        return f"Error: {e}"
+async def signal(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await context.bot.send_message(chat_id=CHAT_ID, text="📈 Sinyal crypto terkirim!")
 
-def send_signal():
-    price = get_btc_price()
-    message = f"🚨 BTC Signal\nHarga saat ini: ${price}"
-    bot.send_message(chat_id=CHAT_ID, text=message)
+if __name__ == '__main__':
+    app = ApplicationBuilder().token(BOT_TOKEN).build()
 
-if __name__ == "__main__":
-    while True:
-        send_signal()
-        time.sleep(900)  # 15 menit
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("signal", signal))
+
+    print("Bot berjalan di Render...")
+    app.run_polling()
