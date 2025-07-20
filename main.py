@@ -1,105 +1,78 @@
 import os
-import requests
+import csv
+from datetime import datetime
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
-from apscheduler.schedulers.background import BackgroundScheduler
+from dotenv import load_dotenv
 
+# Load .env
+load_dotenv()
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
 
-COIN_LIST = {
-    "btc": "bitcoin",
-    "eth": "ethereum",
-    "sol": "solana",
-    "xrp": "ripple",
-    "doge": "dogecoin"
-}
+# Logging fungsi
+def log_signal(symbol, price, recommendation, rsi, macd, tp, sl, whale_activity):
+    timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    row = [timestamp, symbol, price, recommendation, rsi, macd, tp, sl, whale_activity]
 
-def fetch_coin_data(symbol):
-    coin_id = COIN_LIST.get(symbol)
-    if not coin_id:
-        return None
+    with open('logs.csv', mode='a', newline='') as file:
+        writer = csv.writer(file)
+        writer.writerow(row)
 
-    url = f"https://api.coingecko.com/api/v3/simple/price?ids={coin_id}&vs_currencies=usd"
-    try:
-        price_res = requests.get(url).json()
-        price = price_res[coin_id]["usd"]
-    except:
-        return None
+# Command: /start
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("Halo! Bot Telegram crypto aktif 🚀\nKetik /btc atau /eth untuk mulai.")
 
-    # Dummy indikator (buat sederhana dulu)
-    rsi = 55
-    macd = "Bullish"
-    ema21 = price * 0.98
-    ma50 = price * 1.01
-    whale = "High" if symbol == "btc" else "Low"
+# Command: /signal manual
+async def signal(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await context.bot.send_message(chat_id=CHAT_ID, text="📈 Sinyal crypto terkirim!")
 
-    recommendation = "BUY" if rsi < 70 and macd == "Bullish" and whale == "High" else "WAIT"
-
-    return {
-        "price": price,
-        "rsi": rsi,
-        "macd": macd,
-        "ema21": ema21,
-        "ma50": ma50,
-        "whale": whale,
-        "tp": price * 1.03,
-        "sl": price * 0.97,
-        "entry": price * 0.99,
-        "recommendation": recommendation
+# Fungsi utama coin
+async def handle_coin(update: Update, context: ContextTypes.DEFAULT_TYPE, symbol: str):
+    # Data dummy — nanti diganti dari API real-time
+    coin_data = {
+        "BTC": 65800,
+        "ETH": 3450,
+        "XRP": 0.63,
+        "SOL": 178.3,
+        "DOGE": 0.12,
+        "SUI": 0.85,
+        "SEI": 0.38,
+        "BNB": 525.1
     }
 
-async def coin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    symbol = update.message.text.replace("/", "").lower()
-    data = fetch_coin_data(symbol)
+    price = coin_data.get(symbol.upper(), 1.0)
+    rsi = 41.3
+    macd_signal = "MACD Bullish"
+    recommendation = "BUY" if rsi < 50 else "WAIT"
+    tp = round(price * 1.03, 4)
+    sl = round(price * 0.97, 4)
+    whale_status = "Accumulating"
 
-    if not data:
-        await update.message.reply_text("⚠️ Coin tidak dikenali.")
-        return
-
-    msg = (
-        f"💰 {symbol.upper()} Price: ${data['price']:,}\n"
-        f"📥 Entry: ${data['entry']:.2f}\n"
-        f"🎯 TP: ${data['tp']:.2f} | 🛡️ SL: ${data['sl']:.2f}\n\n"
-        f"📊 RSI: {data['rsi']}\n"
-        f"📈 MACD: {data['macd']}\n"
-        f"📉 EMA21: ${data['ema21']:.2f} | MA50: ${data['ma50']:.2f}\n"
-        f"🐳 Whale Accumulation: {data['whale']}\n"
-        f"🧠 Rekomendasi: {data['recommendation']}"
-    )
-    await update.message.reply_text(msg)
-
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("👋 Bot aktif!\nKetik /btc, /eth, /sol, dll untuk cek sinyal.")
-
-# 🔁 Fungsi auto alert tiap 15 menit
-async def send_auto_signals(app):
-    for symbol in COIN_LIST:
-        data = fetch_coin_data(symbol)
-        if data:
-            msg = (
-                f"⏰ Auto Signal {symbol.upper()}\n"
-                f"💰 Price: ${data['price']}\n"
-                f"📥 Entry: ${data['entry']:.2f} | TP: ${data['tp']:.2f} | SL: ${data['sl']:.2f}\n"
-                f"📊 RSI: {data['rsi']} | MACD: {data['macd']} | Whale: {data['whale']}\n"
-                f"📈 EMA21: ${data['ema21']:.2f} | MA50: ${data['ma50']:.2f}\n"
-                f"✅ Rekomendasi: {data['recommendation']}"
-            )
-            await app.bot.send_message(chat_id=CHAT_ID, text=msg)
+    message = f"""
+📊 Sinyal {symbol.upper()}
+Harga: ${price}
+Rekomendasi: {recommendation}
+RSI: {rsi}
+MACD: {macd_signal}
+TP: ${tp}
+SL: ${sl}
+Whale: {whale_status}
+"""
+    await context.bot.send_message(chat_id=update.effective_chat.id, text=message)
+    log_signal(symbol.upper(), price, recommendation, rsi, macd_signal, tp, sl, whale_status)
 
 if __name__ == '__main__':
     app = ApplicationBuilder().token(BOT_TOKEN).build()
 
-    # Command per coin
-    for cmd in COIN_LIST:
-        app.add_handler(CommandHandler(cmd, coin_command))
-
+    # Handler dasar
     app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("signal", signal))
 
-    # Scheduler auto sinyal tiap 15 menit
-    scheduler = BackgroundScheduler()
-    scheduler.add_job(lambda: app.create_task(send_auto_signals(app)), 'interval', minutes=15)
-    scheduler.start()
+    # Coin handlers
+    coin_list = ["btc", "eth", "xrp", "sol", "doge", "sui", "sei", "bnb"]
+    for coin in coin_list:
+        app.add_handler(CommandHandler(coin, lambda u, c, coin=coin: handle_coin(u, c, coin.upper())))
 
-    print("🤖 Bot Telegram berjalan...")
+    print("Bot berjalan... 🚀")
     app.run_polling()
